@@ -19,6 +19,21 @@ export const cleanCell = (value: unknown): string =>
     .replace(/\u00A0/g, ' ')
     .trim();
 
+const normalizeEmail = (value: string): string =>
+  cleanCell(value)
+    .toLowerCase()
+    .replace(/\s+/g, '');
+
+const hasMeaningfulValue = (value: string): boolean => {
+  const normalized = normalizeText(value);
+
+  if (!normalized) {
+    return false;
+  }
+
+  return !['anonimo', 'anonymous', 'anonymo', 'na', 'n a', 'sin dato'].includes(normalized);
+};
+
 const parseCsvText = <T>(text: string, config: Papa.ParseConfig<T>): Promise<Papa.ParseResult<T>> =>
   new Promise((resolve, reject) => {
     Papa.parse<T>(text, {
@@ -165,6 +180,22 @@ export const parseNumber = (value: string): number => {
 export const normalizeLabel = (value: string, fallback = 'Sin dato'): string => {
   const cleaned = cleanCell(value);
   return cleaned.length > 0 ? cleaned : fallback;
+};
+
+export const buildPersonKey = (documentId: string, email = ''): string => {
+  const digits = cleanCell(documentId).replace(/\D/g, '');
+
+  if (digits.length > 0) {
+    return `id:${digits}`;
+  }
+
+  const normalizedEmail = normalizeEmail(email);
+
+  if (hasMeaningfulValue(normalizedEmail)) {
+    return `email:${normalizedEmail}`;
+  }
+
+  return '';
 };
 
 export const toDateInput = (date: Date): string => {

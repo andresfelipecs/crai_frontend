@@ -1,4 +1,5 @@
 import type { DashboardRepository } from './dashboardRepository';
+import { buildPersonKey } from '../lib/parsing';
 import type { ClubRecord, DashboardDataset, LoanRecord, ResourceRecord, SurveyRecord } from '../types/dashboard';
 
 interface DashboardApiResponse {
@@ -37,6 +38,7 @@ const asDate = (value: unknown): Date => {
 };
 
 const mapLoan = (item: Record<string, unknown>): LoanRecord => ({
+  personKey: buildPersonKey(asString(item.userId ?? item.idUsuario ?? item.documentId, ''), asString(item.email, '')),
   faculty: asString(item.faculty ?? item.facultad, 'No definida'),
   program: asString(item.program ?? item.programa, 'No definido'),
   userType: asString(item.userType ?? item.tipoUsuario, 'No definido'),
@@ -45,6 +47,7 @@ const mapLoan = (item: Record<string, unknown>): LoanRecord => ({
 });
 
 const mapSurvey = (item: Record<string, unknown>): SurveyRecord => ({
+  personKey: buildPersonKey(asString(item.documentId ?? item.idUsuario ?? item.userId, ''), asString(item.email, '')),
   faculty: asString(item.faculty ?? item.facultad, 'No definida'),
   program: asString(item.program ?? item.programa, 'No definido'),
   userType: asString(item.userType ?? item.tipoUsuario, 'No definido'),
@@ -52,10 +55,13 @@ const mapSurvey = (item: Record<string, unknown>): SurveyRecord => ({
   satisfactionLabel: asString(item.satisfactionLabel ?? item.satisfaccion, 'Sin respuesta'),
   satisfactionScore: asNumber(item.satisfactionScore ?? item.puntajeSatisfaccion),
   digitalEaseLabel: asString(item.digitalEaseLabel ?? item.facilidadDigital, 'Sin respuesta'),
+  attentionLabel: asString(item.attentionLabel ?? item.attention ?? item.satisfaccionAtencion, 'Sin respuesta'),
+  attentionScore: asNumber(item.attentionScore ?? item.puntajeAtencion ?? item.satisfaccionAtencionScore),
   submittedAt: asDate(item.submittedAt ?? item.fechaEncuesta),
 });
 
 const mapClub = (item: Record<string, unknown>): ClubRecord => ({
+  personKey: buildPersonKey(asString(item.documentId ?? item.idUsuario ?? item.userId, ''), asString(item.email, '')),
   club: asString(item.club, 'Club no especificado'),
   userType: asString(item.userType ?? item.tipoUsuario, 'No definido'),
   program: asString(item.program ?? item.programa, 'No definido'),
@@ -64,6 +70,7 @@ const mapClub = (item: Record<string, unknown>): ClubRecord => ({
 });
 
 const mapResource = (item: Record<string, unknown>): ResourceRecord => ({
+  personKey: buildPersonKey(asString(item.documentId ?? item.identificacion ?? item.userId, ''), asString(item.email, '')),
   faculty: asString(item.faculty ?? item.facultad, 'No definida'),
   userType: asString(item.userType ?? item.tipoUsuario, 'No definido'),
   resource: asString(item.resource ?? item.recurso, 'No definido'),

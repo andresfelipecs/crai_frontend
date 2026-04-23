@@ -36,6 +36,9 @@ const EMPTY_MODEL: DashboardViewModel = {
   clubPrograms: [],
   topPrograms: [],
   facultyLoad: [],
+  clubLoanStudents: [],
+  loanAttentionStudents: [],
+  loanResourceStudents: [],
   loanTotals: {
     total: 0,
     uniquePrograms: 0,
@@ -59,6 +62,13 @@ const EMPTY_MODEL: DashboardViewModel = {
     attendance: 0,
     uniqueClubs: 0,
     uniquePrograms: 0,
+  },
+  crossTotals: {
+    clubLoanOverlap: 0,
+    loanAttentionMatches: 0,
+    loanResourceMatches: 0,
+    averageAttentionScore: 0,
+    resourceCoverageRate: 0,
   },
   availableFaculties: [],
   availableUserTypes: [],
@@ -90,6 +100,19 @@ const formatNumber = (value: number): string =>
 
 const formatDecimal = (value: number): string =>
   new Intl.NumberFormat('es-CO', { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(value);
+
+const isStudentUser = (value: string): boolean => normalizeText(value).includes('estudiante');
+
+const toStudentAlias = (personKey: string): string => {
+  if (personKey.startsWith('id:')) {
+    const digits = personKey.slice(3);
+    return `Est. ${digits.slice(-6)}`;
+  }
+
+  const email = personKey.replace('email:', '');
+  const localPart = email.split('@')[0] ?? 'usuario';
+  return `Est. ${localPart.slice(0, 6)}`;
+};
 
 const getDateBounds = (dataset: DashboardDataset): { min: string; max: string } => {
   const dates = [
@@ -141,6 +164,11 @@ const aggregateModel = (dataset: DashboardDataset, filters: DashboardFilters): D
   const filteredResources = dataset.resources.filter(
     (item) => matchesFilter(item.faculty, filters.faculty) && matchesFilter(item.userType, filters.userType),
   );
+
+  const filteredStudentLoans = filteredLoans.filter((item) => item.personKey && isStudentUser(item.userType));
+  const filteredStudentSurvey = filteredSurvey.filter((item) => item.personKey && isStudentUser(item.userType));
+  const filteredStudentClubs = filteredClubs.filter((item) => item.personKey && isStudentUser(item.userType));
+  const filteredStudentResources = filteredResources.filter((item) => item.personKey && isStudentUser(item.userType));
 
   const resourceInteractions = filteredResources.reduce((sum, item) => sum + item.total, 0);
   const avgSatisfaction =
@@ -267,6 +295,67 @@ const aggregateModel = (dataset: DashboardDataset, filters: DashboardFilters): D
   });
   const loanFaculties = toFacultyArray(loanFacultyMap).slice(0, 8);
 
+  const studentLoanMap = new Map<string, number>();
+  filteredStudentLoans.forEach((item) => {
+    studentLoanMap.set(item.personKey, (studentLoanMap.get(item.personKey) ?? 0) + 1);
+  });
+
+  const studentClubMap = new Map<string, number>();
+  filteredStudentClubs.forEach((item) => {
+    studentClubMap.set(item.personKey, (studentClubMap.get(item.personKey) ?? 0) + 1);
+  });
+
+  const studentAttentionMap = new Map<string, { scoreTotal: number; responses: number }>();
+  filteredStudentSurvey.forEach((item) => {
+    if (item.attentionScore <= 0) {
+      return;
+    }
+
+    const current = studentAttentionMap.get(item.personKey) ?? { scoreTotal: 0, responses: 0 };
+    studentAttentionMap.set(item.personKey, {
+      scoreTotal: current.scoreTotal + item.attentionScore,
+      responses: current.responses + 1,
+    });
+  });
+
+  const studentResourceMap = new Map<string, number>();
+  filteredStudentResources.forEach((item) => {
+    studentResourceMap.set(item.personKey, (studentResourceMap.get(item.personKey) ?? 0) + item.total);
+  });
+
+  const clubLoanStudents = [...studentLoanMap.entries()]
+    .filter(([personKey]) => studentClubMap.has(personKey))
+    .map(([personKey, loans]) => ({
+      student: toStudentAlias(personKey),
+      loans,
+      clubs: studentClubMap.get(personKey) ?? 0,
+    }))
+    .sort((a, b) => b.loans + b.clubs - (a.loans + a.clubs) || b.loans - a.loans)
+    .slice(0, 8);
+
+  const loanAttentionStudents = [...studentLoanMap.entries()]
+    .filter(([personKey]) => studentAttentionMap.has(personKey))
+    .map(([personKey, loans]) => {
+      const attention = studentAttentionMap.get(personKey) ?? { scoreTotal: 0, responses: 1 };
+
+      return {
+        student: toStudentAlias(personKey),
+        loans,
+        attentionScore: attention.scoreTotal / Math.max(attention.responses, 1),
+      };
+    })
+    .sort((a, b) => b.loans - a.loans || b.attentionScore - a.attentionScore)
+    .slice(0, 10);
+
+  const loanResourceStudents = [...studentLoanMap.entries()]
+    .filter(([personKey]) => studentResourceMap.has(personKey))
+    .map(([personKey, loans]) => ({
+      student: toStudentAlias(personKey),
+      loans,
+      digitalUsage: studentResourceMap.get(personKey) ?? 0,
+    }))
+    .sort((a, b) => b.digitalUsage - a.digitalUsage || b.loans - a.loans);
+
   const resourceSessions = filteredResources.reduce((sum, item) => sum + item.sessions, 0);
   const resourceSearches = filteredResources.reduce((sum, item) => sum + item.searches, 0);
   const resourceDownloads = filteredResources.reduce((sum, item) => sum + item.downloads, 0);
@@ -329,6 +418,23 @@ const aggregateModel = (dataset: DashboardDataset, filters: DashboardFilters): D
   const uniqueClubs = new Set(filteredClubs.map((item) => item.club)).size;
   const uniqueClubPrograms = new Set(filteredClubs.map((item) => item.program)).size;
 
+  const clubLoanOverlap = [...studentLoanMap.keys()].filter((personKey) => studentClubMap.has(personKey)).length;
+  const loanAttentionMatches = [...studentLoanMap.keys()].filter((personKey) => studentAttentionMap.has(personKey)).length;
+  const loanResourceMatches = [...studentLoanMap.keys()].filter((personKey) => studentResourceMap.has(personKey)).length;
+
+  const averageAttentionScore =
+    loanAttentionMatches === 0
+      ? 0
+      : [...studentLoanMap.keys()]
+          .filter((personKey) => studentAttentionMap.has(personKey))
+          .reduce((sum, personKey) => {
+            const attention = studentAttentionMap.get(personKey) ?? { scoreTotal: 0, responses: 1 };
+            return sum + attention.scoreTotal / Math.max(attention.responses, 1);
+          }, 0) / loanAttentionMatches;
+
+  const resourceCoverageRate =
+    studentLoanMap.size === 0 ? 0 : (loanResourceMatches / Math.max(studentLoanMap.size, 1)) * 100;
+
   const availableFaculties = [
     ...new Set([
       ...dataset.loans.map((item) => item.faculty),
@@ -368,6 +474,9 @@ const aggregateModel = (dataset: DashboardDataset, filters: DashboardFilters): D
     clubPrograms,
     topPrograms,
     facultyLoad,
+    clubLoanStudents,
+    loanAttentionStudents,
+    loanResourceStudents,
     loanTotals: {
       total: filteredLoans.length,
       uniquePrograms: uniqueLoanPrograms,
@@ -391,6 +500,13 @@ const aggregateModel = (dataset: DashboardDataset, filters: DashboardFilters): D
       attendance: filteredClubs.length,
       uniqueClubs,
       uniquePrograms: uniqueClubPrograms,
+    },
+    crossTotals: {
+      clubLoanOverlap,
+      loanAttentionMatches,
+      loanResourceMatches,
+      averageAttentionScore,
+      resourceCoverageRate,
     },
     availableFaculties,
     availableUserTypes,

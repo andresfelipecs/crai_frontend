@@ -1,4 +1,5 @@
 import {
+  buildPersonKey,
   loadCsvRows,
   loadCsvWithHeaderAfterRows,
   loadCsvWithHeaders,
@@ -55,6 +56,10 @@ const mapLoans = async (): Promise<LoanRecord[]> => {
       }
 
       return {
+        personKey: buildPersonKey(
+          pickField(row, ['id de usuario', 'documento de identificacion']),
+          pickField(row, ['correo institucional', 'correo electronico']),
+        ),
         faculty: normalizeLabel(pickField(row, ['facultad']), 'No definida'),
         program: normalizeLabel(pickField(row, ['programa academico']), 'No definido'),
         userType: normalizeLabel(pickField(row, ['estado de usuario']), 'No definido'),
@@ -82,6 +87,10 @@ const mapSurvey = async (): Promise<SurveyRecord[]> => {
       );
 
       return {
+        personKey: buildPersonKey(
+          pickField(row, ['documento de identificacion', 'id de usuario']),
+          pickField(row, ['correo electronico']),
+        ),
         faculty: normalizeLabel(pickField(row, ['selecciona tu facultad']), 'No definida'),
         program: normalizeLabel(pickField(row, ['selecciona tu programa']), 'No definido'),
         userType: normalizeLabel(pickField(row, ['eres un usuario', 'tipo de usuario']), 'No definido'),
@@ -91,6 +100,16 @@ const mapSurvey = async (): Promise<SurveyRecord[]> => {
         digitalEaseLabel: normalizeLabel(
           pickField(row, ['que tan facil es acceder y usar los recursos digitales']),
           'Sin respuesta',
+        ),
+        attentionLabel: normalizeLabel(
+          pickField(row, ['satisfecho te encuentras con la atencion recibida', 'atencion']),
+          'Sin respuesta',
+        ),
+        attentionScore: scoreFromSatisfaction(
+          normalizeLabel(
+            pickField(row, ['satisfecho te encuentras con la atencion recibida', 'atencion']),
+            'Sin respuesta',
+          ),
         ),
         submittedAt,
       };
@@ -110,6 +129,7 @@ const mapClubs = async (): Promise<ClubRecord[]> => {
       }
 
       return {
+        personKey: buildPersonKey(row[27] ?? '', row[33] ?? ''),
         club: normalizeLabel(row[14] ?? '', 'Club no especificado'),
         userType: normalizeLabel(row[21] ?? '', 'No definido'),
         program: normalizeLabel(row[30] ?? '', 'No definido'),
@@ -125,6 +145,7 @@ const mapResources = async (): Promise<ResourceRecord[]> => {
 
   return rows
     .map((row) => ({
+      personKey: buildPersonKey(pickField(row, ['identificacion']), pickField(row, ['id de usuario'])),
       faculty: normalizeLabel(pickField(row, ['facultad']), 'No definida'),
       userType: normalizeLabel(pickField(row, ['tipo de usuario']), 'No definido'),
       resource: normalizeLabel(pickField(row, ['recurso electronico']), 'No definido'),

@@ -4,12 +4,15 @@ import {
   BarChart,
   CartesianGrid,
   Cell,
+  ComposedChart,
   Legend,
   Line,
   LineChart,
   Pie,
   PieChart,
   ResponsiveContainer,
+  Scatter,
+  ScatterChart,
   Tooltip,
   XAxis,
   YAxis,
@@ -31,6 +34,13 @@ import { exportReportCsv } from './lib/reportExport';
 import type { MetricItem } from './types/dashboard';
 
 type SectionId = 'summary' | 'loans' | 'resources' | 'survey' | 'clubs';
+type CrossTooltipPayload = {
+  payload: {
+    student: string;
+    loans: number;
+    digitalUsage: number;
+  };
+};
 
 const RESOURCE_COLORS = ['#A20E2D', '#C61A38', '#E72845', '#FF3B56', '#7E1636', '#223A64', '#7B0F29', '#5E2846'];
 const CLUB_COLORS = ['#A20E2D', '#FF3B56', '#223A64', '#7E1636', '#C61A38', '#5E2846'];
@@ -42,7 +52,7 @@ const SECTION_CONFIG: Array<{
   icon: typeof LayoutDashboard;
   hint: string;
 }> = [
-  { id: 'summary', label: 'Resumen', icon: LayoutDashboard, hint: 'Vista global' },
+  { id: 'summary', label: 'General', icon: LayoutDashboard, hint: 'Dashboard principal' },
   { id: 'loans', label: 'Prestamos', icon: BookOpen, hint: 'Uso de biblioteca' },
   { id: 'resources', label: 'Recursos', icon: Database, hint: 'Elogim y digitales' },
   { id: 'survey', label: 'Encuestas', icon: Users, hint: 'Satisfaccion' },
@@ -64,6 +74,32 @@ const EmptyPanelBody = ({ message }: { message: string }) => (
   </div>
 );
 
+const LoanResourceTooltip = ({
+  active,
+  payload,
+}: {
+  active?: boolean;
+  payload?: CrossTooltipPayload[];
+}) => {
+  if (!active || !payload?.length) {
+    return null;
+  }
+
+  const point = payload[0]?.payload;
+
+  if (!point) {
+    return null;
+  }
+
+  return (
+    <div className="chart-tooltip">
+      <p className="chart-tooltip-title">{point.student}</p>
+      <p>Prestamos: {formatNumber(point.loans)}</p>
+      <p>Uso digital: {formatNumber(point.digitalUsage)}</p>
+    </div>
+  );
+};
+
 function App() {
   const { loading, error, filters, setFilters, model, dataSourceDetail } = useDashboardData();
   const [activeSection, setActiveSection] = useState<SectionId>('summary');
@@ -72,8 +108,10 @@ function App() {
 
   const summaryInsight =
     model.resourceUsage.length > 0
-      ? `Mayor traccion digital: ${model.resourceUsage[0].resource}.`
-      : 'Ajusta filtros para descubrir insights cruzados.';
+      ? `Mayor traccion digital: ${model.resourceUsage[0].resource}. ${formatNumber(
+          model.crossTotals.loanResourceMatches,
+        )} estudiantes enlazan prestamos con recursos electronicos.`
+      : 'Ajusta filtros para descubrir relaciones entre prestamos, clubes, encuestas y recursos.';
 
   const sectionInsight = useMemo(() => {
     if (activeSection === 'loans') {
@@ -200,9 +238,34 @@ function App() {
     },
   ];
 
+  const crossMetrics: MetricItem[] = [
+    {
+      label: 'Clubes + prestamos',
+      value: formatNumber(model.crossTotals.clubLoanOverlap),
+      helper: 'Estudiantes que aparecen en ambos servicios',
+    },
+    {
+      label: 'Prestamos + atencion',
+      value: formatNumber(model.crossTotals.loanAttentionMatches),
+      helper: `Atencion promedio: ${formatDecimal(model.crossTotals.averageAttentionScore)}/5`,
+    },
+    {
+      label: 'Prestamos + recursos',
+      value: formatNumber(model.crossTotals.loanResourceMatches),
+      helper: 'Estudiantes enlazados con uso digital',
+    },
+    {
+      label: 'Cobertura digital',
+      value: `${formatDecimal(model.crossTotals.resourceCoverageRate)}%`,
+      helper: 'Prestatarios que tambien usan recursos electronicos',
+    },
+  ];
+
+  const mainDashboardMetrics: MetricItem[] = [...summaryMetrics, ...crossMetrics];
+
   const currentMetrics =
     activeSection === 'summary'
-      ? summaryMetrics
+      ? mainDashboardMetrics
       : activeSection === 'loans'
         ? loanMetrics
         : activeSection === 'resources'
@@ -309,6 +372,8 @@ function App() {
           <EmptyPanelBody message="No hay registros de asistencia en clubes para este filtro." />
         )}
       </Panel>
+
+      {renderCross()}
     </>
   );
 
@@ -686,6 +751,113 @@ function App() {
     </>
   );
 
+  const renderCross = () => (
+    <>
+      <Panel
+        title="Estudiantes que asisten a clubes y prestan libros"
+        subtitle="Cruce individual entre asistencias a clubes y prestamos de libros"
+        rightSlot={<span className="panel-badge">Documento o correo</span>}
+      >
+        {model.clubLoanStudents.length > 0 ? (
+          <ResponsiveContainer width="100%" height={290}>
+            <BarChart data={model.clubLoanStudents} layout="vertical" margin={{ top: 8, right: 12, left: 8, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#F0CBD4" />
+              <XAxis type="number" tick={{ fill: '#5C2030', fontSize: 12 }} />
+              <YAxis type="category" dataKey="student" width={112} tick={{ fill: '#5C2030', fontSize: 11 }} />
+              <Tooltip formatter={(value: number) => makeTooltipFormatter(value)} />
+              <Legend />
+              <Bar dataKey="loans" name="Prestamos" fill="#A20E2D" radius={[0, 10, 10, 0]} />
+              <Bar dataKey="clubs" name="Asistencias a clubes" fill="#223A64" radius={[0, 10, 10, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        ) : (
+          <EmptyPanelBody message="No hay estudiantes enlazados entre clubes y prestamos con el filtro actual." />
+        )}
+      </Panel>
+
+      <Panel
+        title="Prestamos vs satisfaccion con la atencion"
+        subtitle='Cruce con la pregunta "Atencion" de la encuesta CRAI'
+        rightSlot={<span className="panel-badge">Escala 1 a 5</span>}
+      >
+        {model.loanAttentionStudents.length > 0 ? (
+          <ResponsiveContainer width="100%" height={290}>
+            <ComposedChart data={model.loanAttentionStudents} margin={{ top: 8, right: 16, left: 0, bottom: 42 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#F0CBD4" />
+              <XAxis
+                dataKey="student"
+                angle={-10}
+                textAnchor="end"
+                interval={0}
+                height={68}
+                tick={{ fill: '#5C2030', fontSize: 11 }}
+              />
+              <YAxis yAxisId="left" tick={{ fill: '#5C2030', fontSize: 12 }} />
+              <YAxis
+                yAxisId="right"
+                orientation="right"
+                domain={[1, 5]}
+                ticks={[1, 2, 3, 4, 5]}
+                tick={{ fill: '#5C2030', fontSize: 12 }}
+              />
+              <Tooltip
+                formatter={(value: number, name: string) =>
+                  name === 'Satisfaccion atencion' ? `${formatDecimal(value)}/5` : makeTooltipFormatter(value)
+                }
+              />
+              <Legend />
+              <Bar yAxisId="left" dataKey="loans" name="Prestamos" fill="#FF3B56" radius={[8, 8, 0, 0]} />
+              <Line
+                yAxisId="right"
+                type="monotone"
+                dataKey="attentionScore"
+                name="Satisfaccion atencion"
+                stroke="#223A64"
+                strokeWidth={3}
+                dot={{ r: 4 }}
+              />
+            </ComposedChart>
+          </ResponsiveContainer>
+        ) : (
+          <EmptyPanelBody message="No hay estudiantes con prestamos y respuesta de atencion en el filtro actual." />
+        )}
+      </Panel>
+
+      <Panel
+        className="panel-wide"
+        title="Relacion prestamos vs usos de recursos electronicos"
+        subtitle="Cada punto representa un estudiante enlazado entre prestamos y recursos digitales"
+        rightSlot={<span className="panel-badge">Estudiantes enlazados</span>}
+      >
+        {model.loanResourceStudents.length > 0 ? (
+          <ResponsiveContainer width="100%" height={320}>
+            <ScatterChart margin={{ top: 8, right: 12, left: 2, bottom: 8 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#F0CBD4" />
+              <XAxis
+                type="number"
+                dataKey="loans"
+                name="Prestamos"
+                allowDecimals={false}
+                tick={{ fill: '#5C2030', fontSize: 12 }}
+              />
+              <YAxis
+                type="number"
+                dataKey="digitalUsage"
+                name="Uso digital"
+                allowDecimals={false}
+                tick={{ fill: '#5C2030', fontSize: 12 }}
+              />
+              <Tooltip content={<LoanResourceTooltip />} cursor={{ stroke: '#A20E2D', strokeDasharray: '4 4' }} />
+              <Scatter data={model.loanResourceStudents} fill="#A20E2D" fillOpacity={0.28} />
+            </ScatterChart>
+          </ResponsiveContainer>
+        ) : (
+          <EmptyPanelBody message="No hay estudiantes con prestamos y uso de recursos electronicos en este filtro." />
+        )}
+      </Panel>
+    </>
+  );
+
   return (
     <div className="dashboard-shell">
       <aside className="sidebar">
@@ -693,7 +865,7 @@ function App() {
           <div className="brand-logo">uao</div>
           <div>
             <p className="brand-tag">CRAI</p>
-            <h1>Data Dashboard</h1>
+            <h1>General</h1>
           </div>
         </div>
 

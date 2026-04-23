@@ -1,4 +1,5 @@
 export interface LoanRecord {
+  personKey: string;
   faculty: string;
   program: string;
   userType: string;
@@ -7,6 +8,7 @@ export interface LoanRecord {
 }
 
 export interface SurveyRecord {
+  personKey: string;
   faculty: string;
   program: string;
   userType: string;
@@ -14,10 +16,13 @@ export interface SurveyRecord {
   satisfactionLabel: string;
   satisfactionScore: number;
   digitalEaseLabel: string;
+  attentionLabel: string;
+  attentionScore: number;
   submittedAt: Date;
 }
 
 export interface ClubRecord {
+  personKey: string;
   club: string;
   userType: string;
   program: string;
@@ -26,6 +31,7 @@ export interface ClubRecord {
 }
 
 export interface ResourceRecord {
+  personKey: string;
   faculty: string;
   userType: string;
   resource: string;
@@ -82,6 +88,24 @@ export interface FacultyPoint {
   value: number;
 }
 
+export interface StudentClubLoanPoint {
+  student: string;
+  loans: number;
+  clubs: number;
+}
+
+export interface StudentAttentionPoint {
+  student: string;
+  loans: number;
+  attentionScore: number;
+}
+
+export interface StudentResourcePoint {
+  student: string;
+  loans: number;
+  digitalUsage: number;
+}
+
 export interface DashboardViewModel {
   metrics: MetricItem[];
   timeSeries: SeriesPoint[];
@@ -100,6 +124,9 @@ export interface DashboardViewModel {
   clubPrograms: ProgramPoint[];
   topPrograms: ProgramPoint[];
   facultyLoad: FacultyPoint[];
+  clubLoanStudents: StudentClubLoanPoint[];
+  loanAttentionStudents: StudentAttentionPoint[];
+  loanResourceStudents: StudentResourcePoint[];
   loanTotals: {
     total: number;
     uniquePrograms: number;
@@ -123,6 +150,13 @@ export interface DashboardViewModel {
     attendance: number;
     uniqueClubs: number;
     uniquePrograms: number;
+  };
+  crossTotals: {
+    clubLoanOverlap: number;
+    loanAttentionMatches: number;
+    loanResourceMatches: number;
+    averageAttentionScore: number;
+    resourceCoverageRate: number;
   };
   availableFaculties: string[];
   availableUserTypes: string[];
