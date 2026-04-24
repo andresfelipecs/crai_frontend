@@ -1,176 +1,44 @@
-import {
-  buildPersonKey,
-  loadCsvRows,
-  loadCsvWithHeaderAfterRows,
-  loadCsvWithHeaders,
-  normalizeLabel,
-  normalizeText,
-  parseFlexibleDate,
-  parseNumber,
-  pickField,
-} from '../lib/parsing';
-import type { ClubRecord, DashboardDataset, LoanRecord, ResourceRecord, SurveyRecord } from '../types/dashboard';
 import type { DashboardRepository } from './dashboardRepository';
+import type { DashboardFilters, DashboardViewModel } from '../types/dashboard';
 
-const scoreFromSatisfaction = (label: string): number => {
-  const value = normalizeText(label);
-
-  if (!value) {
-    return 0;
-  }
-
-  if (value.includes('excelente') || value.includes('extremadamente satisfecho')) {
-    return 5;
-  }
-
-  if (value.includes('satisfecho') || value.includes('bueno')) {
-    return 4;
-  }
-
-  if (value.includes('regular') || value.includes('neutral') || value.includes('ni dificil ni facil')) {
-    return 3;
-  }
-
-  if (value.includes('insatisfecho') || value.includes('dificil') || value.includes('malo')) {
-    return 2;
-  }
-
-  if (value.includes('pesimo') || value.includes('extremadamente insatisfecho')) {
-    return 1;
-  }
-
-  return 3;
-};
-
-const mapLoans = async (): Promise<LoanRecord[]> => {
-  const rows = await loadCsvWithHeaders('/data/loans.csv');
-
-  return rows
-    .map((row) => {
-      const loanDate = parseFlexibleDate(
-        pickField(row, ['fecha y hora', 'fecha']) || pickField(row, ['ultimo mes de prestamo']),
-      );
-
-      if (!loanDate) {
-        return null;
-      }
-
-      return {
-        personKey: buildPersonKey(
-          pickField(row, ['id de usuario', 'documento de identificacion']),
-          pickField(row, ['correo institucional', 'correo electronico']),
-        ),
-        faculty: normalizeLabel(pickField(row, ['facultad']), 'No definida'),
-        program: normalizeLabel(pickField(row, ['programa academico']), 'No definido'),
-        userType: normalizeLabel(pickField(row, ['estado de usuario']), 'No definido'),
-        collection: normalizeLabel(pickField(row, ['coleccion']), 'No definida'),
-        loanDate,
-      };
-    })
-    .filter((row): row is LoanRecord => Boolean(row));
-};
-
-const mapSurvey = async (): Promise<SurveyRecord[]> => {
-  const rows = await loadCsvWithHeaders('/data/survey.csv');
-
-  return rows
-    .map((row) => {
-      const submittedAt = parseFlexibleDate(pickField(row, ['hora de inicio']));
-
-      if (!submittedAt) {
-        return null;
-      }
-
-      const satisfactionLabel = normalizeLabel(
-        pickField(row, ['tan satisfecho se encuentra con el servicio en general', 'satisfecho te encuentras']),
-        'Sin respuesta',
-      );
-
-      return {
-        personKey: buildPersonKey(
-          pickField(row, ['documento de identificacion', 'id de usuario']),
-          pickField(row, ['correo electronico']),
-        ),
-        faculty: normalizeLabel(pickField(row, ['selecciona tu facultad']), 'No definida'),
-        program: normalizeLabel(pickField(row, ['selecciona tu programa']), 'No definido'),
-        userType: normalizeLabel(pickField(row, ['eres un usuario', 'tipo de usuario']), 'No definido'),
-        visitFrequency: normalizeLabel(pickField(row, ['con que frecuencia utiliza']), 'Sin respuesta'),
-        satisfactionLabel,
-        satisfactionScore: scoreFromSatisfaction(satisfactionLabel),
-        digitalEaseLabel: normalizeLabel(
-          pickField(row, ['que tan facil es acceder y usar los recursos digitales']),
-          'Sin respuesta',
-        ),
-        attentionLabel: normalizeLabel(
-          pickField(row, ['satisfecho te encuentras con la atencion recibida', 'atencion']),
-          'Sin respuesta',
-        ),
-        attentionScore: scoreFromSatisfaction(
-          normalizeLabel(
-            pickField(row, ['satisfecho te encuentras con la atencion recibida', 'atencion']),
-            'Sin respuesta',
-          ),
-        ),
-        submittedAt,
-      };
-    })
-    .filter((row): row is SurveyRecord => Boolean(row));
-};
-
-const mapClubs = async (): Promise<ClubRecord[]> => {
-  const rows = await loadCsvRows('/data/clubs.csv');
-
-  return rows
-    .map((row) => {
-      const attendanceDate = parseFlexibleDate(row[1] ?? '');
-
-      if (!attendanceDate) {
-        return null;
-      }
-
-      return {
-        personKey: buildPersonKey(row[27] ?? '', row[33] ?? ''),
-        club: normalizeLabel(row[14] ?? '', 'Club no especificado'),
-        userType: normalizeLabel(row[21] ?? '', 'No definido'),
-        program: normalizeLabel(row[30] ?? '', 'No definido'),
-        attendee: normalizeLabel(row[24] ?? '', 'Anonimo'),
-        attendanceDate,
-      };
-    })
-    .filter((row): row is ClubRecord => Boolean(row));
-};
-
-const mapResources = async (): Promise<ResourceRecord[]> => {
-  const rows = await loadCsvWithHeaderAfterRows('/data/resources.csv', 17);
-
-  return rows
-    .map((row) => ({
-      personKey: buildPersonKey(pickField(row, ['identificacion']), pickField(row, ['id de usuario'])),
-      faculty: normalizeLabel(pickField(row, ['facultad']), 'No definida'),
-      userType: normalizeLabel(pickField(row, ['tipo de usuario']), 'No definido'),
-      resource: normalizeLabel(pickField(row, ['recurso electronico']), 'No definido'),
-      sessions: parseNumber(pickField(row, ['sesiones'])),
-      searches: parseNumber(pickField(row, ['busquedas'])),
-      downloads: parseNumber(pickField(row, ['descargas'])),
-      total: parseNumber(pickField(row, ['totales'])),
-    }))
-    .filter((row) => row.resource !== 'No definido');
+const EMPTY_MODEL: DashboardViewModel = {
+  metrics: [
+    { label: 'Interacciones totales', value: '0', helper: 'Sin datos cargados' },
+    { label: 'Prestamos de libros', value: '0', helper: 'Sin datos cargados' },
+    { label: 'Satisfaccion promedio', value: '0.0/5', helper: 'Sin datos cargados' },
+    { label: 'Consultas recursos digitales', value: '0', helper: 'Sin datos cargados' },
+  ],
+  timeSeries: [],
+  satisfactionDistribution: [],
+  resourceUsage: [],
+  clubDistribution: [],
+  loanCollections: [],
+  loanUserTypes: [],
+  loanFaculties: [],
+  resourceActions: [],
+  resourceFacultyUsage: [],
+  surveyFrequencyDistribution: [],
+  surveyDigitalEaseDistribution: [],
+  surveyUserTypes: [],
+  clubUserTypes: [],
+  clubPrograms: [],
+  topPrograms: [],
+  facultyLoad: [],
+  clubLoanStudents: [],
+  loanAttentionStudents: [],
+  loanResourceStudents: [],
+  loanTotals: { total: 0, uniquePrograms: 0, uniqueCollections: 0, uniqueFaculties: 0 },
+  resourceTotals: { interactions: 0, sessions: 0, searches: 0, downloads: 0, uniqueResources: 0, rows: 0 },
+  surveyTotals: { responses: 0, averageSatisfaction: 0, satisfiedRate: 0 },
+  clubTotals: { attendance: 0, uniqueClubs: 0, uniquePrograms: 0 },
+  crossTotals: { clubLoanOverlap: 0, loanAttentionMatches: 0, loanResourceMatches: 0, averageAttentionScore: 0, resourceCoverageRate: 0 },
+  availableFaculties: [],
+  availableUserTypes: [],
+  dateBounds: { min: '', max: '' },
 };
 
 export class MockDashboardRepository implements DashboardRepository {
-  async getDataset(): Promise<DashboardDataset> {
-    const [loans, survey, clubs, resources] = await Promise.all([
-      mapLoans(),
-      mapSurvey(),
-      mapClubs(),
-      mapResources(),
-    ]);
-
-    return {
-      loans,
-      survey,
-      clubs,
-      resources,
-    };
+  async getDashboard(_filters: DashboardFilters): Promise<DashboardViewModel> {
+    return EMPTY_MODEL;
   }
 }

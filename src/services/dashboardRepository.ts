@@ -1,5 +1,5 @@
-import type { DashboardDataset } from '../types/dashboard';
+import type { DashboardFilters, DashboardViewModel } from '../types/dashboard';
 
 export interface DashboardRepository {
-  getDataset: () => Promise<DashboardDataset>;
+  getDashboard: (filters: DashboardFilters) => Promise<DashboardViewModel>;
 }
