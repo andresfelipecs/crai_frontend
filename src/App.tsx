@@ -864,8 +864,7 @@ function App() {
         <div className="brand">
           <div className="brand-logo">uao</div>
           <div>
-            <p className="brand-tag">CRAI</p>
-            <h1>General</h1>
+            <h1>CRAI Data Dashboard</h1>
           </div>
         </div>
 
